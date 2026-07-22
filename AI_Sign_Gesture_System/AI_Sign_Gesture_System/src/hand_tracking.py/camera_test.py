@@ -13,7 +13,7 @@ if not cap.isOpened():
     exit()
 
 print("Webcam started successfully.")
-print("Press 'e' to quit.")
+print("Press 'q' to quit.")
 
 while True:
     # Read frame from webcam
@@ -27,7 +27,7 @@ while True:
     cv2.imshow("SignNova - Camera Test", frame)
     
     # 2. Wait 1 millisecond for a keypress; exit loop if 'e' is pressed
-    if cv2.waitKey(1) & 0xFF == ord('e'):
+    if cv2.waitKey(1) & 0xFF == ord('q'):
         break
 
 # 3. Clean up and close windows properly on exit
