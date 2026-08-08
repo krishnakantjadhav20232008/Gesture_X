@@ -8,7 +8,7 @@ import joblib
 # 1. LOAD DATASET
 # ==========================================================
 
-CSV_FILE = r"D:\AI_Sign_Gesture_System\outputs\gesturex_dataset.csv"
+CSV_FILE = r"D:\AI_Sign_Gesture_System\outputs\gesturex_dataset_prepared1.csv"
 
 df = pd.read_csv(CSV_FILE)
 
