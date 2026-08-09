@@ -3,6 +3,7 @@ import cv2
 import joblib
 import numpy as np
 import mediapipe as mp
+
 from collections import Counter, deque
 
 
@@ -10,94 +11,185 @@ from collections import Counter, deque
 # 1. PROJECT PATHS
 # ==========================================================
 
-MODEL_PATH = r"D:\AI_Sign_Gesture_System\outputs\models"
-PREPROCESSED_PATH = r"D:\AI_Sign_Gesture_System\outputs\preprocessed"
-
-
-# ==========================================================
-# 2. MODEL FILES
-# ==========================================================
-
-MODEL_FILE = os.path.join(
-    MODEL_PATH,
-    "random_forest.pkl"
+MODEL_FILE = (
+    r"D:\AI_Sign_Gesture_System"
+    r"\outputs\models_signs\random_forest.pkl"
 )
 
-ENCODER_FILE = os.path.join(
-    PREPROCESSED_PATH,
-    "label_encoder.pkl"
+ENCODER_FILE = (
+    r"D:\AI_Sign_Gesture_System"
+    r"\outputs\preprocessed_signs\label_encoder.pkl"
 )
 
 
 # ==========================================================
-# 3. LOAD RANDOM FOREST
-# ==========================================================
-
-if not os.path.exists(MODEL_FILE):
-
-    print("\nERROR: Random Forest model not found.")
-    print(MODEL_FILE)
-    exit()
-
-
-model = joblib.load(MODEL_FILE)
-
-
-# ==========================================================
-# 4. LOAD LABEL ENCODER
-# ==========================================================
-
-if not os.path.exists(ENCODER_FILE):
-
-    print("\nERROR: Label encoder not found.")
-    print(ENCODER_FILE)
-    exit()
-
-
-label_encoder = joblib.load(ENCODER_FILE)
-
-
-# ==========================================================
-# 5. STARTUP INFORMATION
+# 2. CHECK MODEL FILES
 # ==========================================================
 
 print("\n==============================================")
 print("       GESTUREX SIGN LANGUAGE DETECTION")
 print("==============================================")
 
-print("Random Forest       : Loaded")
-print("Label Encoder       : Loaded")
+
+if not os.path.isfile(MODEL_FILE):
+
+    print("\nERROR: Random Forest model not found.")
+    print(MODEL_FILE)
+    print("\nPlease check that this file exists.")
+    exit()
+
+
+if not os.path.isfile(ENCODER_FILE):
+
+    print("\nERROR: Label encoder not found.")
+    print(ENCODER_FILE)
+    print("\nPlease check that this file exists.")
+    exit()
+
+
+# ==========================================================
+# 3. LOAD RANDOM FOREST MODEL
+# ==========================================================
+
+try:
+
+    model = joblib.load(
+        MODEL_FILE
+    )
+
+    print(
+        "Random Forest       : Loaded"
+    )
+
+except Exception as error:
+
+    print(
+        "\nERROR: Could not load Random Forest."
+    )
+
+    print(error)
+
+    exit()
+
+
+# ==========================================================
+# 4. LOAD LABEL ENCODER
+# ==========================================================
+
+try:
+
+    label_encoder = joblib.load(
+        ENCODER_FILE
+    )
+
+    print(
+        "Label Encoder       : Loaded"
+    )
+
+except Exception as error:
+
+    print(
+        "\nERROR: Could not load Label Encoder."
+    )
+
+    print(error)
+
+    exit()
+
+
+# ==========================================================
+# 5. MODEL INFORMATION
+# ==========================================================
+
 print(
     "Number of Classes   :",
-    len(label_encoder.classes_)
+    len(
+        label_encoder.classes_
+    )
 )
 
 print(
     "Classes             :",
-    list(label_encoder.classes_)
+    list(
+        label_encoder.classes_
+    )
 )
+
+
+# ==========================================================
+# 6. VERIFY MODEL FEATURES
+# ==========================================================
+
+if hasattr(
+    model,
+    "n_features_in_"
+):
+
+    print(
+        "Model Features      :",
+        model.n_features_in_
+    )
+
+    if model.n_features_in_ != 63:
+
+        print(
+            "\nWARNING: Model does not expect 63 features."
+        )
+
+        print(
+            "Expected:",
+            model.n_features_in_
+        )
+
+        print(
+            "Real-time MediaPipe features: 63"
+        )
+
 
 print("==============================================")
 
 
 # ==========================================================
-# 6. MEDIAPIPE HAND DETECTION
+# 7. MEDIAPIPE HANDS
 # ==========================================================
 
-mp_hands = mp.solutions.hands
-mp_drawing = mp.solutions.drawing_utils
+try:
 
+    mp_hands = mp.solutions.hands
+
+    mp_drawing = (
+        mp.solutions.drawing_utils
+    )
+
+except Exception as error:
+
+    print(
+        "\nERROR: MediaPipe could not be loaded."
+    )
+
+    print(error)
+
+    exit()
+
+
+# ==========================================================
+# 8. INITIALIZE MEDIAPIPE
+# ==========================================================
 
 hands = mp_hands.Hands(
+
     static_image_mode=False,
+
     max_num_hands=1,
+
     min_detection_confidence=0.5,
+
     min_tracking_confidence=0.5
 )
 
 
 # ==========================================================
-# 7. OPEN WEBCAM
+# 9. OPEN WEBCAM
 # ==========================================================
 
 cap = cv2.VideoCapture(0)
@@ -105,47 +197,78 @@ cap = cv2.VideoCapture(0)
 
 if not cap.isOpened():
 
-    print("\nERROR: Could not open webcam.")
+    print(
+        "\nERROR: Could not open webcam."
+    )
+
+    hands.close()
+
     exit()
 
 
-print("\nWebcam Started Successfully.")
-
-print("\nControls:")
-print("SPACE = Add detected sign")
-print("B     = Delete last character")
-print("C     = Clear sentence")
-print("Q     = Quit")
+print(
+    "\nWebcam Started Successfully."
+)
 
 
 # ==========================================================
-# 8. VARIABLES
+# 10. CONTROLS
+# ==========================================================
+
+print("\nControls:")
+print(
+    "SPACE = Add detected sign"
+)
+print(
+    "B     = Delete last character"
+)
+print(
+    "C     = Clear sentence"
+)
+print(
+    "Q     = Quit"
+)
+
+print(
+    "=============================================="
+)
+
+
+# ==========================================================
+# 11. VARIABLES
 # ==========================================================
 
 sentence = ""
 
-current_prediction = "No Hand"
+current_prediction = (
+    "No Hand"
+)
 
 current_confidence = 0.0
 
 
-# Prediction history
+# ==========================================================
+# 12. PREDICTION HISTORY
+# ==========================================================
+
 prediction_history = deque(
     maxlen=5
 )
 
 
 # ==========================================================
-# 9. MAIN LOOP
+# 13. MAIN LOOP
 # ==========================================================
 
 while True:
 
-    # ------------------------------------------------------
-    # Capture webcam frame
-    # ------------------------------------------------------
+
+    # ======================================================
+    # CAPTURE FRAME
+    # ======================================================
 
     success, frame = cap.read()
+
 
     if not success:
 
@@ -156,9 +279,9 @@ while True:
         break
 
 
-    # ------------------------------------------------------
-    # Mirror webcam
-    # ------------------------------------------------------
+    # ======================================================
+    # MIRROR IMAGE
+    # ======================================================
 
     frame = cv2.flip(
         frame,
@@ -166,9 +289,9 @@ while True:
     )
 
 
-    # ------------------------------------------------------
-    # Convert BGR → RGB
-    # ------------------------------------------------------
+    # ======================================================
+    # BGR → RGB
+    # ======================================================
 
     rgb_frame = cv2.cvtColor(
         frame,
@@ -176,50 +299,62 @@ while True:
     )
 
 
-    # ------------------------------------------------------
-    # MediaPipe hand detection
-    # ------------------------------------------------------
+    # ======================================================
+    # MEDIAPIPE PROCESSING
+    # ======================================================
 
     results = hands.process(
         rgb_frame
     )
 
 
-    # Default prediction
+    # ======================================================
+    # DEFAULT VALUES
+    # ======================================================
 
-    current_prediction = "No Hand"
+    current_prediction = (
+        "No Hand"
+    )
+
     current_confidence = 0.0
 
 
     # ======================================================
-    # 10. HAND FOUND
+    # HAND DETECTED
     # ======================================================
 
     if results.multi_hand_landmarks:
+
 
         hand_landmarks = (
             results.multi_hand_landmarks[0]
         )
 
 
-        # --------------------------------------------------
-        # Draw landmarks
-        # --------------------------------------------------
+        # ==================================================
+        # DRAW HAND LANDMARKS
+        # ==================================================
 
         mp_drawing.draw_landmarks(
+
             frame,
+
             hand_landmarks,
+
             mp_hands.HAND_CONNECTIONS
         )
 
 
         # ==================================================
-        # 11. EXTRACT 21 LANDMARKS
+        # EXTRACT 21 LANDMARKS
         # ==================================================
 
         features = []
 
-        for landmark in hand_landmarks.landmark:
+
+        for landmark in (
+            hand_landmarks.landmark
+        ):
 
             features.append(
                 landmark.x
@@ -235,57 +370,69 @@ while True:
 
 
         # ==================================================
-        # 12. CONVERT TO NUMPY
+        # NUMPY ARRAY
         # ==================================================
 
         features = np.array(
+
             features,
+
             dtype=np.float32
         )
 
 
         # ==================================================
-        # 13. VERIFY 63 FEATURES
+        # VERIFY 63 FEATURES
         # ==================================================
 
         if len(features) == 63:
 
-            # --------------------------------------------------
-            # Convert:
-            #
-            # 63 values
-            #      ↓
-            # 21 landmarks × 3 coordinates
-            # --------------------------------------------------
+
+            # ==================================================
+            # RESHAPE
+            # ==================================================
 
             landmarks = features.reshape(
+
                 21,
+
                 3
             )
 
 
             # ==================================================
-            # 14. LANDMARK NORMALIZATION
+            # LANDMARK NORMALIZATION
+            #
+            # IMPORTANT:
+            # This is the SAME preprocessing used
+            # in your working Sign Language code.
             # ==================================================
 
-            # Landmark 0 = wrist
+
+            # --------------------------------------------------
+            # WRIST = LANDMARK 0
+            # --------------------------------------------------
 
             wrist = landmarks[0].copy()
 
 
             # --------------------------------------------------
-            # Move wrist to origin
+            # MOVE WRIST TO ORIGIN
             # --------------------------------------------------
 
-            landmarks = landmarks - wrist
+            landmarks = (
+                landmarks - wrist
+            )
 
 
             # --------------------------------------------------
-            # Calculate hand size
+            # CALCULATE HAND SIZE
             # --------------------------------------------------
 
             distances = np.linalg.norm(
+
                 landmarks,
+
                 axis=1
             )
 
@@ -295,7 +442,9 @@ while True:
             )
 
 
-            # Prevent division by zero
+            # --------------------------------------------------
+            # PREVENT DIVISION BY ZERO
+            # --------------------------------------------------
 
             if scale < 1e-8:
 
@@ -303,7 +452,7 @@ while True:
 
 
             # --------------------------------------------------
-            # Normalize landmarks
+            # NORMALIZE LANDMARKS
             # --------------------------------------------------
 
             landmarks = (
@@ -312,78 +461,126 @@ while True:
 
 
             # ==================================================
-            # 15. FINAL MODEL INPUT
+            # FINAL 63-FEATURE INPUT
             # ==================================================
 
             features = landmarks.reshape(
+
                 1,
+
                 63
             )
 
 
             # ==================================================
-            # 16. RANDOM FOREST PREDICTION
+            # RANDOM FOREST PREDICTION
             # ==================================================
 
-            prediction = model.predict(
-                features
-            )
+            try:
+
+                prediction = model.predict(
+                    features
+                )
 
 
-            # ==================================================
-            # 17. DECODE LABEL
-            # ==================================================
+                # ==================================================
+                # LABEL ENCODER
+                # ==================================================
 
-            predicted_label = (
-                label_encoder.inverse_transform(
-                    prediction
-                )[0]
-            )
+                predicted_label = (
+
+                    label_encoder
+                    .inverse_transform(
+                        prediction
+                    )[0]
+                )
 
 
-            # ==================================================
-            # 18. CONFIDENCE
-            # ==================================================
+                # ==================================================
+                # CONFIDENCE
+                # ==================================================
 
-            if hasattr(
-                model,
-                "predict_proba"
-            ):
+                current_confidence = 0.0
 
-                probabilities = (
-                    model.predict_proba(
-                        features
+
+                if hasattr(
+
+                    model,
+
+                    "predict_proba"
+
+                ):
+
+                    probabilities = (
+
+                        model
+                        .predict_proba(
+                            features
+                        )
+                    )
+
+
+                    current_confidence = (
+
+                        float(
+                            np.max(
+                                probabilities[0]
+                            )
+                        )
+
+                        * 100
+                    )
+
+
+                # ==================================================
+                # PREDICTION SMOOTHING
+                # ==================================================
+
+                prediction_history.append(
+
+                    str(
+                        predicted_label
                     )
                 )
 
 
-                current_confidence = (
-                    np.max(
-                        probabilities[0]
-                    ) * 100
+                common_prediction = (
+
+                    Counter(
+                        prediction_history
+                    )
+                    .most_common(1)
                 )
 
 
-            # ==================================================
-            # 19. STABLE PREDICTION
-            # ==================================================
+                if common_prediction:
 
-            prediction_history.append(
-                predicted_label
-            )
+                    current_prediction = (
+
+                        common_prediction[0][0]
+                    )
+
+                else:
+
+                    current_prediction = (
+
+                        str(
+                            predicted_label
+                        )
+                    )
 
 
-            common_prediction = (
-                Counter(
-                    prediction_history
-                ).most_common(1)
-            )
-
-
-            if common_prediction:
+            except Exception as error:
 
                 current_prediction = (
-                    common_prediction[0][0]
+                    "Prediction Error"
+                )
+
+                current_confidence = 0.0
+
+                print(
+                    "\nPrediction Error:",
+                    error
                 )
 
 
@@ -393,127 +590,256 @@ while True:
                 "Feature Error"
             )
 
+            current_confidence = 0.0
+
 
     else:
 
-        # Clear prediction history when hand disappears
+        # ==================================================
+        # NO HAND
+        # ==================================================
 
         prediction_history.clear()
 
-
-    # ======================================================
-    # 20. DISPLAY CURRENT SIGN
-    # ======================================================
-
-    cv2.putText(
-        frame,
-        f"Sign: {current_prediction}",
-        (20, 45),
-        cv2.FONT_HERSHEY_SIMPLEX,
-        1,
-        (0, 255, 0),
-        2
-    )
-
-
-    # ======================================================
-    # 21. DISPLAY CONFIDENCE
-    # ======================================================
-
-    if current_confidence > 0:
-
-        cv2.putText(
-            frame,
-            f"Confidence: {current_confidence:.1f}%",
-            (20, 85),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.75,
-            (0, 255, 255),
-            2
+        current_prediction = (
+            "No Hand"
         )
 
+        current_confidence = 0.0
+
 
     # ======================================================
-    # 22. DISPLAY RECOGNIZED TEXT
+    # DISPLAY SIGN
     # ======================================================
 
     cv2.rectangle(
+
         frame,
-        (15, 110),
-        (frame.shape[1] - 15, 175),
-        (30, 30, 30),
+
+        (
+            0,
+            0
+        ),
+
+        (
+            frame.shape[1],
+            105
+        ),
+
+        (
+            20,
+            20,
+            20
+        ),
+
         -1
     )
 
 
     cv2.putText(
+
         frame,
+
+        f"Sign: {current_prediction}",
+
+        (
+            20,
+            40
+        ),
+
+        cv2.FONT_HERSHEY_SIMPLEX,
+
+        0.9,
+
+        (
+            0,
+            255,
+            0
+        ),
+
+        2
+    )
+
+
+    # ======================================================
+    # DISPLAY CONFIDENCE
+    # ======================================================
+
+    cv2.putText(
+
+        frame,
+
+        f"Confidence: "
+        f"{current_confidence:.1f}%",
+
+        (
+            20,
+            82
+        ),
+
+        cv2.FONT_HERSHEY_SIMPLEX,
+
+        0.7,
+
+        (
+            0,
+            255,
+            255
+        ),
+
+        2
+    )
+
+
+    # ======================================================
+    # RECOGNIZED TEXT BOX
+    # ======================================================
+
+    cv2.rectangle(
+
+        frame,
+
+        (
+            15,
+            120
+        ),
+
+        (
+            frame.shape[1] - 15,
+            185
+        ),
+
+        (
+            30,
+            30,
+            30
+        ),
+
+        -1
+    )
+
+
+    cv2.putText(
+
+        frame,
+
         "Recognized Text:",
-        (25, 140),
+
+        (
+            25,
+            148
+        ),
+
         cv2.FONT_HERSHEY_SIMPLEX,
+
         0.65,
-        (255, 255, 255),
+
+        (
+            255,
+            255,
+            255
+        ),
+
         2
     )
 
 
     cv2.putText(
+
         frame,
+
         sentence,
-        (25, 165),
+
+        (
+            25,
+            175
+        ),
+
         cv2.FONT_HERSHEY_SIMPLEX,
+
         0.8,
-        (0, 255, 0),
+
+        (
+            0,
+            255,
+            0
+        ),
+
         2
     )
 
 
     # ======================================================
-    # 23. DISPLAY INSTRUCTIONS
+    # INSTRUCTIONS
     # ======================================================
 
     cv2.putText(
+
         frame,
+
         "SPACE:Add  B:Delete  C:Clear  Q:Quit",
-        (20, frame.shape[0] - 20),
+
+        (
+            20,
+            frame.shape[0] - 20
+        ),
+
         cv2.FONT_HERSHEY_SIMPLEX,
+
         0.55,
-        (255, 255, 255),
+
+        (
+            255,
+            255,
+            255
+        ),
+
         1
     )
 
 
     # ======================================================
-    # 24. SHOW WINDOW
+    # SHOW WINDOW
     # ======================================================
 
     cv2.imshow(
+
         "GestureX - Sign Language Detection",
+
         frame
     )
 
 
     # ======================================================
-    # 25. KEYBOARD CONTROL
+    # KEYBOARD INPUT
     # ======================================================
 
-    key = cv2.waitKey(1) & 0xFF
+    key = (
+        cv2.waitKey(1) & 0xFF
+    )
 
 
-    # ------------------------------------------------------
+    # ======================================================
     # SPACE → ADD SIGN
-    # ------------------------------------------------------
+    # ======================================================
 
     if key == ord(" "):
 
         if (
-            current_prediction != "No Hand"
-            and current_prediction != "Feature Error"
+
+            current_prediction
+            not in [
+                "No Hand",
+                "Feature Error",
+                "Prediction Error"
+            ]
+
         ):
 
             sentence += str(
                 current_prediction
             )
+
 
             print(
                 "Added:",
@@ -526,15 +852,18 @@ while True:
             )
 
 
-    # ------------------------------------------------------
+    # ======================================================
     # B → DELETE LAST CHARACTER
-    # ------------------------------------------------------
+    # ======================================================
 
     elif key == ord("b"):
 
         if len(sentence) > 0:
 
-            sentence = sentence[:-1]
+            sentence = (
+                sentence[:-1]
+            )
+
 
             print(
                 "Text:",
@@ -542,22 +871,22 @@ while True:
             )
 
 
-    # ------------------------------------------------------
+    # ======================================================
     # C → CLEAR
-    # ------------------------------------------------------
+    # ======================================================
 
     elif key == ord("c"):
 
         sentence = ""
 
         print(
-            "Recognized text cleared."
+            "\nRecognized text cleared."
         )
 
 
-    # ------------------------------------------------------
-    # Q → EXIT
-    # ------------------------------------------------------
+    # ======================================================
+    # Q → QUIT
+    # ======================================================
 
     elif key == ord("q"):
 
@@ -565,7 +894,7 @@ while True:
 
 
 # ==========================================================
-# 26. CLEANUP
+# 14. CLEANUP
 # ==========================================================
 
 cap.release()
@@ -576,16 +905,26 @@ hands.close()
 
 
 # ==========================================================
-# 27. FINAL OUTPUT
+# 15. FINAL OUTPUT
 # ==========================================================
 
-print("\n==============================================")
-print("       SIGN LANGUAGE DETECTION STOPPED")
-print("==============================================")
+print(
+    "\n=============================================="
+)
+
+print(
+    "       SIGN LANGUAGE DETECTION STOPPED"
+)
+
+print(
+    "=============================================="
+)
 
 print(
     "Final Recognized Text:",
     sentence
 )
 
-print("==============================================")
+print(
+    "=============================================="
+)

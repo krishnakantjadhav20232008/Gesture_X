@@ -12,16 +12,6 @@ import av
 
 from collections import deque, Counter
 
-mp_error = None
-mp_hands = None
-mp_drawing = None
-
-try:
-    mp_hands = mp.solutions.hands   
-    mp_drawing = mp.solutions.drawing_utils
-except Exception as err:
-    mp_error = err
-
 from streamlit_webrtc import (
     webrtc_streamer,
     VideoProcessorBase,
@@ -38,12 +28,12 @@ st.set_page_config(
     page_title="GestureX",
     page_icon="🖐️",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="expanded",
 )
 
 
 # ==========================================================
-# PROJECT PATHS
+# 2. PROJECT PATHS
 # ==========================================================
 
 BASE_DIR = r"D:\AI_Sign_Gesture_System"
@@ -51,41 +41,66 @@ OUTPUTS_DIR = os.path.join(BASE_DIR, "outputs")
 
 
 # ==========================================================
-# GESTURE CONTROL MODEL
+# 3. GESTURE CONTROL MODEL PATHS
 # ==========================================================
 
 GESTURE_MODEL_FILE = os.path.join(
     OUTPUTS_DIR,
     "model_gesture",
-    "gesture_control_rf.pkl"
+    "gesture_control_rf.pkl",
 )
 
 GESTURE_ENCODER_FILE = os.path.join(
     OUTPUTS_DIR,
     "preprocessed_gesture",
-    "gesture_encoder.pkl"
+    "gesture_encoder.pkl",
+)
+
+GESTURE_SCALER_FILE = os.path.join(
+    OUTPUTS_DIR,
+    "preprocessed_gesture",
+    "scaler.pkl",
 )
 
 
 # ==========================================================
-# SIGN LANGUAGE MODEL
+# 4. SIGN LANGUAGE MODEL PATHS
 # ==========================================================
 
 SIGN_MODEL_FILE = os.path.join(
     OUTPUTS_DIR,
     "models_signs",
-    "random_forest.pkl"
+    "random_forest.pkl",
 )
 
 SIGN_ENCODER_FILE = os.path.join(
     OUTPUTS_DIR,
     "preprocessed_signs",
-    "label_encoder.pkl"
+    "label_encoder.pkl",
 )
 
 
+# IMPORTANT:
+# We DO NOT use sign_scaler.pkl here.
+#
+# Your verified working Sign Language prediction program
+# uses:
+#
+# 21 landmarks
+#       ↓
+# wrist moved to origin
+#       ↓
+# hand-size normalization
+#       ↓
+# 63 features
+#       ↓
+# Random Forest
+#
+# Therefore the exact same preprocessing is used below.
+
+
 # ==========================================================
-# 3. CUSTOM CSS
+# 5. PAGE CSS
 # ==========================================================
 
 st.markdown(
@@ -106,84 +121,58 @@ st.markdown(
         margin-bottom: 25px;
     }
 
-    .status-box {
-        padding: 15px;
-        border-radius: 10px;
-        background-color: #202020;
-        color: white;
-        margin-top: 10px;
-    }
-
-    .gesture-box {
-        padding: 20px;
-        border-radius: 12px;
-        background-color: #111111;
-        color: #00ff00;
-        font-size: 28px;
-        font-weight: bold;
-        text-align: center;
-    }
-
-    .confidence-box {
-        padding: 12px;
-        border-radius: 10px;
-        background-color: #202020;
-        color: #ffff00;
-        font-size: 20px;
-        text-align: center;
-    }
-
     </style>
     """,
-    unsafe_allow_html=True
+    unsafe_allow_html=True,
 )
 
 
 # ==========================================================
-# 4. TITLE
+# 6. TITLE
 # ==========================================================
 
 st.markdown(
     '<div class="main-title">🖐️ GestureX</div>',
-    unsafe_allow_html=True
+    unsafe_allow_html=True,
 )
 
 st.markdown(
     '<div class="sub-title">'
-    'AI Sign Language & Gesture Control System'
-    '</div>',
-    unsafe_allow_html=True
+    "AI Sign Language & Gesture Control System"
+    "</div>",
+    unsafe_allow_html=True,
 )
 
 
 # ==========================================================
-# 5. CHECK FILES
+# 7. CHECK REQUIRED FILES
 # ==========================================================
-
-def check_file(path):
-
-    return os.path.exists(path)
-
-
-missing_files = []
 
 required_files = [
     GESTURE_MODEL_FILE,
     GESTURE_ENCODER_FILE,
     SIGN_MODEL_FILE,
-    SIGN_ENCODER_FILE
+    SIGN_ENCODER_FILE,
 ]
+
+missing_files = []
 
 for file_path in required_files:
 
-    if not check_file(file_path):
+    if not os.path.isfile(file_path):
 
         missing_files.append(file_path)
 
 
 if missing_files:
 
-    st.error("Some required model files are missing.")
+    st.error(
+        "❌ Required model files are missing."
+    )
+
+    st.write(
+        "Please check these paths:"
+    )
 
     for file_path in missing_files:
 
@@ -193,11 +182,15 @@ if missing_files:
 
 
 # ==========================================================
-# 6. LOAD MODELS
+# 8. LOAD MODELS
 # ==========================================================
 
 @st.cache_resource
 def load_models():
+
+    # ------------------------------------------------------
+    # Gesture Control
+    # ------------------------------------------------------
 
     gesture_model = joblib.load(
         GESTURE_MODEL_FILE
@@ -207,6 +200,21 @@ def load_models():
         GESTURE_ENCODER_FILE
     )
 
+    gesture_scaler = None
+
+    if os.path.isfile(
+        GESTURE_SCALER_FILE
+    ):
+
+        gesture_scaler = joblib.load(
+            GESTURE_SCALER_FILE
+        )
+
+
+    # ------------------------------------------------------
+    # Sign Language
+    # ------------------------------------------------------
+
     sign_model = joblib.load(
         SIGN_MODEL_FILE
     )
@@ -215,42 +223,60 @@ def load_models():
         SIGN_ENCODER_FILE
     )
 
+
     return (
         gesture_model,
         gesture_encoder,
+        gesture_scaler,
         sign_model,
-        sign_encoder
+        sign_encoder,
     )
 
 
-(
-    gesture_model,
-    gesture_encoder,
-    sign_model,
-    sign_encoder
-) = load_models()
+try:
+
+    (
+        gesture_model,
+        gesture_encoder,
+        gesture_scaler,
+        sign_model,
+        sign_encoder,
+    ) = load_models()
+
+except Exception as error:
+
+    st.error(
+        "❌ Error while loading model files."
+    )
+
+    st.code(
+        str(error)
+    )
+
+    st.stop()
 
 
 # ==========================================================
-# 7. SIDEBAR
+# 9. SIDEBAR
 # ==========================================================
 
-st.sidebar.title("⚙️ GestureX Control")
+st.sidebar.title(
+    "⚙️ GestureX Control"
+)
+
 
 mode = st.sidebar.radio(
     "Select Mode",
     [
         "Sign Language",
-        "Gesture Control"
-    ]
+        "Gesture Control",
+    ],
 )
 
 
-st.sidebar.markdown("---")
-
 camera_enabled = st.sidebar.checkbox(
     "📷 Camera",
-    value=True
+    value=True,
 )
 
 
@@ -260,18 +286,18 @@ st.sidebar.markdown("---")
 if mode == "Sign Language":
 
     st.sidebar.success(
-        "Sign Language Mode Active"
+        "🤟 Sign Language Mode Active"
     )
 
 else:
 
     st.sidebar.success(
-        "Gesture Control Mode Active"
+        "🖱️ Gesture Control Mode Active"
     )
 
 
 # ==========================================================
-# 8. MODEL INFORMATION
+# 10. MODEL INFORMATION
 # ==========================================================
 
 with st.sidebar.expander(
@@ -288,7 +314,16 @@ with st.sidebar.expander(
             "Classes:",
             len(
                 sign_encoder.classes_
-            )
+            ),
+        )
+
+        st.write(
+            "Preprocessing:"
+        )
+
+        st.write(
+            "Wrist normalization + "
+            "hand-size normalization"
         )
 
     else:
@@ -301,69 +336,47 @@ with st.sidebar.expander(
             "Classes:",
             len(
                 gesture_encoder.classes_
-            )
+            ),
+        )
+
+        st.write(
+            "Scaler:",
+            "Loaded"
+            if gesture_scaler is not None
+            else "Not Found",
         )
 
 
 # ==========================================================
-# 9. GESTURE ACTION MAPPING
+# 11. LABEL NORMALIZATION
 # ==========================================================
 
-GESTURE_ACTIONS = {
+def normalize_label(label):
 
-    # -----------------------------
-    # Basic gestures
-    # -----------------------------
+    label = str(label)
 
-    "palm":
-        "General / Palm",
+    label = label.strip()
 
-    "fist":
-        "Play / Pause",
+    label = label.lower()
 
-    "thumbs-up":
-        "Volume Up",
+    label = label.replace(
+        "_",
+        "-",
+    )
 
-    "thumbs-down":
-        "Volume Down",
+    label = label.replace(
+        " ",
+        "-",
+    )
 
-    # -----------------------------
-    # Index gestures
-    # -----------------------------
-
-    "index-right":
-        "Move Right",
-
-    "index-left":
-        "Move Left",
-
-    # -----------------------------
-    # Additional gestures
-    # -----------------------------
-
-    "volume-up":
-        "Volume Up",
-
-    "volume-down":
-        "Volume Down",
-
-    "no-gesture":
-        "No Action",
-
-    "okay":
-        "Enter / OK"
-}
+    return label
 
 
 # ==========================================================
-# 10. WINDOWS MEDIA CONTROL
+# 12. WINDOWS KEY CONTROL
 # ==========================================================
 
-def windows_media_key(vk_code):
-
-    """
-    Sends a Windows media key.
-    """
+def press_key(vk_code):
 
     try:
 
@@ -371,14 +384,14 @@ def windows_media_key(vk_code):
             vk_code,
             0,
             0,
-            0
+            0,
         )
 
         ctypes.windll.user32.keybd_event(
             vk_code,
             0,
             2,
-            0
+            0,
         )
 
         return True
@@ -388,62 +401,90 @@ def windows_media_key(vk_code):
         return False
 
 
+# ==========================================================
+# 13. WINDOWS VIRTUAL KEY CODES
+# ==========================================================
+
+VK_LEFT = 0x25
+VK_UP = 0x26
+VK_RIGHT = 0x27
+VK_DOWN = 0x28
+
+VK_ENTER = 0x0D
+
+VK_VOLUME_DOWN = 0xAE
+VK_VOLUME_UP = 0xAF
+
+VK_MEDIA_PLAY_PAUSE = 0xB3
+
+
+# ==========================================================
+# 14. WINDOWS ACTION FUNCTIONS
+# ==========================================================
+
 def volume_up():
 
-    # Windows VK_VOLUME_UP
-    return windows_media_key(0xAF)
+    return press_key(
+        VK_VOLUME_UP
+    )
 
 
 def volume_down():
 
-    # Windows VK_VOLUME_DOWN
-    return windows_media_key(0xAE)
+    return press_key(
+        VK_VOLUME_DOWN
+    )
+
+
+def move_left():
+
+    return press_key(
+        VK_LEFT
+    )
+
+
+def move_right():
+
+    return press_key(
+        VK_RIGHT
+    )
+
+
+def move_up():
+
+    return press_key(
+        VK_UP
+    )
+
+
+def move_down():
+
+    return press_key(
+        VK_DOWN
+    )
 
 
 def play_pause():
 
-    # Windows VK_MEDIA_PLAY_PAUSE
-    return windows_media_key(0xB3)
+    return press_key(
+        VK_MEDIA_PLAY_PAUSE
+    )
 
 
 def press_enter():
 
-    # Windows Enter
-    return windows_media_key(0x0D)
-
-
-# ==========================================================
-# 11. NORMALIZE LABEL
-# ==========================================================
-
-def normalize_label(label):
-
-    label = str(label)
-
-    label = label.lower()
-
-    label = label.strip()
-
-    label = label.replace(
-        "_",
-        "-"
+    return press_key(
+        VK_ENTER
     )
 
-    label = label.replace(
-        " ",
-        "-"
-    )
-
-    return label
-
 
 # ==========================================================
-# 12. EXECUTE GESTURE ACTION
+# 15. GESTURE ACTION EXECUTION
 # ==========================================================
 
 def execute_gesture_action(
     label,
-    processor
+    processor,
 ):
 
     normalized = normalize_label(
@@ -452,178 +493,254 @@ def execute_gesture_action(
 
     current_time = time.time()
 
-    # --------------------------------
+
+    # ------------------------------------------------------
     # Cooldown
-    # --------------------------------
+    # ------------------------------------------------------
 
     if (
-        current_time -
-        processor.last_action_time
+        current_time
+        - processor.last_action_time
         <
         processor.action_cooldown
     ):
 
         return
 
-    # --------------------------------
-    # Volume Up
-    # --------------------------------
+
+    success = False
+
+    action = "No Action"
+
+
+    # ======================================================
+    # VOLUME UP
+    # ======================================================
 
     if normalized in [
+
         "thumbs-up",
-        "volume-up"
+        "thumbsup",
+        "thumb-up",
+        "volume-up",
+        "volumeup",
+
     ]:
 
-        volume_up()
+        success = volume_up()
 
-        processor.last_action = (
-            "Volume Up"
-        )
+        action = "🔊 Volume Up"
 
-        processor.last_action_time = (
-            current_time
-        )
 
-    # --------------------------------
-    # Volume Down
-    # --------------------------------
+    # ======================================================
+    # VOLUME DOWN
+    # ======================================================
 
     elif normalized in [
+
         "thumbs-down",
-        "volume-down"
+        "thumbsdown",
+        "thumb-down",
+        "volume-down",
+        "volumedown",
+
     ]:
 
-        volume_down()
+        success = volume_down()
 
-        processor.last_action = (
-            "Volume Down"
-        )
+        action = "🔉 Volume Down"
 
-        processor.last_action_time = (
-            current_time
-        )
 
-    # --------------------------------
-    # Index Right
-    # --------------------------------
+    # ======================================================
+    # RIGHT
+    # ======================================================
 
     elif normalized in [
+
         "index-right",
         "indexright",
-        "right"
+        "right",
+        "move-right",
+        "moveright",
+
     ]:
 
-        processor.last_action = (
-            "Move Right"
-        )
+        success = move_right()
 
-        processor.last_action_time = (
-            current_time
-        )
+        action = "➡️ Move Right"
 
-    # --------------------------------
-    # Index Left
-    # --------------------------------
+
+    # ======================================================
+    # LEFT
+    # ======================================================
 
     elif normalized in [
+
         "index-left",
         "indexleft",
-        "left"
+        "left",
+        "move-left",
+        "moveleft",
+
     ]:
 
-        processor.last_action = (
-            "Move Left"
-        )
+        success = move_left()
 
-        processor.last_action_time = (
-            current_time
-        )
+        action = "⬅️ Move Left"
 
-    # --------------------------------
-    # Fist
-    # --------------------------------
 
-    elif normalized == "fist":
-
-        play_pause()
-
-        processor.last_action = (
-            "Play / Pause"
-        )
-
-        processor.last_action_time = (
-            current_time
-        )
-
-    # --------------------------------
-    # OK
-    # --------------------------------
+    # ======================================================
+    # UP
+    # ======================================================
 
     elif normalized in [
+
+        "up",
+        "move-up",
+        "moveup",
+
+    ]:
+
+        success = move_up()
+
+        action = "⬆️ Move Up"
+
+
+    # ======================================================
+    # DOWN
+    # ======================================================
+
+    elif normalized in [
+
+        "down",
+        "move-down",
+        "movedown",
+
+    ]:
+
+        success = move_down()
+
+        action = "⬇️ Move Down"
+
+
+    # ======================================================
+    # FIST
+    # ======================================================
+
+    elif normalized in [
+
+        "fist",
+        "closed-fist",
+        "closedfist",
+
+    ]:
+
+        success = play_pause()
+
+        action = "⏯️ Play / Pause"
+
+
+    # ======================================================
+    # OKAY
+    # ======================================================
+
+    elif normalized in [
+
         "okay",
-        "ok"
+        "ok",
+        "ok-sign",
+        "oksign",
+
     ]:
 
-        press_enter()
+        success = press_enter()
 
-        processor.last_action = (
-            "OK / Enter"
-        )
+        action = "⏎ Enter / OK"
 
-        processor.last_action_time = (
-            current_time
-        )
 
-    # --------------------------------
-    # Palm
-    # --------------------------------
-
-    elif normalized == "palm":
-
-        processor.last_action = (
-            "Palm Detected"
-        )
-
-        processor.last_action_time = (
-            current_time
-        )
-
-    # --------------------------------
-    # No gesture
-    # --------------------------------
+    # ======================================================
+    # PALM
+    # ======================================================
 
     elif normalized in [
+
+        "palm",
+        "open-palm",
+        "openpalm",
+
+    ]:
+
+        success = True
+
+        action = "✋ Palm Detected"
+
+
+    # ======================================================
+    # NO GESTURE
+    # ======================================================
+
+    elif normalized in [
+
         "no-gesture",
         "nogesture",
-        "none"
+        "none",
+        "no-action",
+
     ]:
 
-        processor.last_action = (
-            "No Action"
+        return
+
+
+    # ======================================================
+    # SAVE ACTION
+    # ======================================================
+
+    if success:
+
+        processor.last_action = action
+
+        processor.last_action_time = (
+            current_time
         )
 
 
 # ==========================================================
-# 13. MEDIAPIPE
+# 16. MEDIAPIPE
 # ==========================================================
 
-if mp_hands is None or mp_drawing is None:
-    st.error(
-        "MediaPipe `solutions` API is not available in the installed package.\n"
-        "Please install a compatible MediaPipe version, for example `mediapipe==0.10.0`, and restart the app."
+try:
+
+    mp_hands = mp.solutions.hands
+
+    mp_drawing = (
+        mp.solutions.drawing_utils
     )
-    if mp_error is not None:
-        st.code(str(mp_error))
+
+except Exception as error:
+
+    st.error(
+        "❌ MediaPipe could not be loaded."
+    )
+
+    st.code(
+        str(error)
+    )
+
     st.stop()
 
 
 # ==========================================================
-# 14. VIDEO PROCESSOR
+# 17. VIDEO PROCESSOR
 # ==========================================================
 
 class GestureXProcessor(
     VideoProcessorBase
 ):
+
+
+    # ======================================================
+    # INITIALIZATION
+    # ======================================================
 
     def __init__(self):
 
@@ -631,25 +748,10 @@ class GestureXProcessor(
 
         self.lock = threading.Lock()
 
-        self.prediction_history = deque(
-            maxlen=7
-        )
 
-        self.current_prediction = (
-            "No Hand"
-        )
-
-        self.current_confidence = 0.0
-
-        self.last_action = (
-            "Waiting..."
-        )
-
-        self.last_action_time = 0
-
-        self.action_cooldown = 1.0
-
-        self.sentence = ""
+        # --------------------------------------------------
+        # MediaPipe
+        # --------------------------------------------------
 
         self.hands = mp_hands.Hands(
 
@@ -659,107 +761,314 @@ class GestureXProcessor(
 
             min_detection_confidence=0.5,
 
-            min_tracking_confidence=0.5
+            min_tracking_confidence=0.5,
+
         )
 
 
+        # --------------------------------------------------
+        # Prediction smoothing
+        # --------------------------------------------------
+
+        self.prediction_history = deque(
+            maxlen=5
+        )
+
+
+        # --------------------------------------------------
+        # Results
+        # --------------------------------------------------
+
+        self.current_prediction = (
+            "No Hand"
+        )
+
+        self.current_confidence = 0.0
+
+
+        # --------------------------------------------------
+        # Gesture action
+        # --------------------------------------------------
+
+        self.last_action = (
+            "Waiting..."
+        )
+
+        self.last_action_time = 0
+
+        self.action_cooldown = 1.2
+
+
     # ======================================================
-    # EXTRACT FEATURES
+    # EXTRACT RAW 63 FEATURES
     # ======================================================
 
     def extract_features(
         self,
-        hand_landmarks
+        hand_landmarks,
     ):
 
         features = []
+
 
         for landmark in (
             hand_landmarks.landmark
         ):
 
-            features.extend(
-                [
-                    landmark.x,
-                    landmark.y,
-                    landmark.z
-                ]
+            features.append(
+                landmark.x
             )
 
-        features = np.array(
+            features.append(
+                landmark.y
+            )
+
+            features.append(
+                landmark.z
+            )
+
+
+        return np.asarray(
             features,
-            dtype=np.float32
+            dtype=np.float32,
         )
+
+
+    # ======================================================
+    # SIGN LANGUAGE PREPROCESSING
+    # ======================================================
+
+    def preprocess_sign_language(
+        self,
+        features,
+    ):
+
+        # --------------------------------------------------
+        # Verify 63 features
+        # --------------------------------------------------
+
+        if len(features) != 63:
+
+            raise ValueError(
+                "Sign Language requires "
+                "exactly 63 features."
+            )
+
+
+        # --------------------------------------------------
+        # 63 → 21 × 3
+        # --------------------------------------------------
+
+        landmarks = features.reshape(
+            21,
+            3,
+        )
+
+
+        # --------------------------------------------------
+        # LANDMARK 0 = WRIST
+        # --------------------------------------------------
+
+        wrist = landmarks[0].copy()
+
+
+        # --------------------------------------------------
+        # MOVE WRIST TO ORIGIN
+        # --------------------------------------------------
+
+        landmarks = (
+            landmarks - wrist
+        )
+
+
+        # --------------------------------------------------
+        # CALCULATE HAND SIZE
+        # --------------------------------------------------
+
+        distances = np.linalg.norm(
+            landmarks,
+            axis=1,
+        )
+
+
+        scale = np.max(
+            distances
+        )
+
+
+        # --------------------------------------------------
+        # PREVENT DIVISION BY ZERO
+        # --------------------------------------------------
+
+        if scale < 1e-8:
+
+            scale = 1.0
+
+
+        # --------------------------------------------------
+        # NORMALIZE LANDMARKS
+        # --------------------------------------------------
+
+        landmarks = (
+            landmarks / scale
+        )
+
+
+        # --------------------------------------------------
+        # RETURN 63 FEATURES
+        # --------------------------------------------------
+
+        return landmarks.reshape(
+            1,
+            63,
+        )
+
+
+    # ======================================================
+    # GESTURE CONTROL PREPROCESSING
+    # ======================================================
+
+    def preprocess_gesture(
+        self,
+        features,
+    ):
+
+        if len(features) != 63:
+
+            raise ValueError(
+                "Gesture Control requires "
+                "exactly 63 features."
+            )
+
+
+        features = features.reshape(
+            1,
+            63,
+        )
+
+
+        # --------------------------------------------------
+        # Gesture model uses its scaler
+        # --------------------------------------------------
+
+        if gesture_scaler is not None:
+
+            features = (
+                gesture_scaler.transform(
+                    features
+                )
+            )
+
 
         return features
 
 
     # ======================================================
-    # PREDICT
+    # PREDICTION
     # ======================================================
 
     def predict(
         self,
-        features
+        features,
     ):
 
-        if self.mode == "Gesture Control":
 
-            model = gesture_model
+        # ==================================================
+        # SIGN LANGUAGE
+        # ==================================================
 
-            encoder = gesture_encoder
-
-        else:
+        if self.mode == "Sign Language":
 
             model = sign_model
 
             encoder = sign_encoder
 
 
-        features = features.reshape(
-            1,
-            63
-        )
+            # IMPORTANT:
+            # DO NOT use sign_scaler.
+            #
+            # Use the exact preprocessing from
+            # the verified working prediction file.
 
+            model_features = (
+                self.preprocess_sign_language(
+                    features
+                )
+            )
+
+
+        # ==================================================
+        # GESTURE CONTROL
+        # ==================================================
+
+        else:
+
+            model = gesture_model
+
+            encoder = gesture_encoder
+
+
+            model_features = (
+                self.preprocess_gesture(
+                    features
+                )
+            )
+
+
+        # ==================================================
+        # RANDOM FOREST
+        # ==================================================
 
         prediction = model.predict(
-            features
+            model_features
         )
 
 
-        label = encoder.inverse_transform(
-            prediction
-        )[0]
+        # ==================================================
+        # LABEL ENCODER
+        # ==================================================
 
+        label = (
+            encoder.inverse_transform(
+                prediction
+            )[0]
+        )
+
+
+        # ==================================================
+        # CONFIDENCE
+        # ==================================================
 
         confidence = 0.0
 
 
         if hasattr(
             model,
-            "predict_proba"
+            "predict_proba",
         ):
 
             probabilities = (
                 model.predict_proba(
-                    features
+                    model_features
                 )
             )
 
+
             confidence = (
+
                 float(
                     np.max(
                         probabilities[0]
                     )
                 )
-                *
-                100
+
+                * 100
             )
 
 
         return (
             str(label),
-            confidence
+            confidence,
         )
 
 
@@ -769,37 +1078,42 @@ class GestureXProcessor(
 
     def recv(
         self,
-        frame
+        frame,
     ):
+
+
+        # ==================================================
+        # FRAME → NUMPY
+        # ==================================================
 
         image = frame.to_ndarray(
             format="bgr24"
         )
 
 
-        # -----------------------------------------------
-        # Mirror image
-        # -----------------------------------------------
+        # ==================================================
+        # MIRROR
+        # ==================================================
 
         image = cv2.flip(
             image,
-            1
+            1,
         )
 
 
-        # -----------------------------------------------
-        # RGB
-        # -----------------------------------------------
+        # ==================================================
+        # BGR → RGB
+        # ==================================================
 
         rgb = cv2.cvtColor(
             image,
-            cv2.COLOR_BGR2RGB
+            cv2.COLOR_BGR2RGB,
         )
 
 
-        # -----------------------------------------------
-        # MediaPipe
-        # -----------------------------------------------
+        # ==================================================
+        # MEDIAPIPE
+        # ==================================================
 
         results = self.hands.process(
             rgb
@@ -811,20 +1125,21 @@ class GestureXProcessor(
         confidence = 0.0
 
 
-        # =================================================
-        # HAND DETECTED
-        # =================================================
+        # ==================================================
+        # HAND FOUND
+        # ==================================================
 
         if results.multi_hand_landmarks:
+
 
             hand_landmarks = (
                 results.multi_hand_landmarks[0]
             )
 
 
-            # ---------------------------------------------
-            # Draw landmarks
-            # ---------------------------------------------
+            # ------------------------------------------------
+            # DRAW LANDMARKS
+            # ------------------------------------------------
 
             mp_drawing.draw_landmarks(
 
@@ -832,73 +1147,91 @@ class GestureXProcessor(
 
                 hand_landmarks,
 
-                mp_hands.HAND_CONNECTIONS
+                mp_hands.HAND_CONNECTIONS,
             )
 
 
-            # ---------------------------------------------
-            # Extract 63 features
-            # ---------------------------------------------
+            # ------------------------------------------------
+            # EXTRACT RAW 63 FEATURES
+            # ------------------------------------------------
 
-            features = self.extract_features(
-                hand_landmarks
+            features = (
+                self.extract_features(
+                    hand_landmarks
+                )
             )
 
 
-            if len(features) == 63:
+            # ------------------------------------------------
+            # PREDICT
+            # ------------------------------------------------
 
-                try:
+            try:
 
-                    prediction, confidence = (
-                        self.predict(
-                            features
-                        )
+                prediction, confidence = (
+                    self.predict(
+                        features
                     )
-
-                except Exception:
-
-                    prediction = (
-                        "Prediction Error"
-                    )
-
-                    confidence = 0.0
+                )
 
 
-                # -----------------------------------------
-                # Smoothing
-                # -----------------------------------------
+            except Exception as error:
+
+                prediction = (
+                    "Prediction Error"
+                )
+
+                confidence = 0.0
+
+                print(
+                    "Prediction Error:",
+                    error
+                )
+
+
+            # ==================================================
+            # SMOOTH PREDICTION
+            # ==================================================
+
+            if prediction != "Prediction Error":
+
 
                 self.prediction_history.append(
                     prediction
                 )
 
 
-                common = (
+                common_prediction = (
                     Counter(
                         self.prediction_history
-                    )
-                    .most_common(1)
+                    ).most_common(1)
                 )
 
 
-                if common:
+                if common_prediction:
 
                     prediction = (
-                        common[0][0]
+                        common_prediction[0][0]
                     )
 
 
-                # -----------------------------------------
-                # Gesture control
-                # -----------------------------------------
+                # ==================================================
+                # EXECUTE GESTURE ACTION
+                # ==================================================
 
-                if self.mode == "Gesture Control":
+                if self.mode == (
+                    "Gesture Control"
+                ):
 
                     execute_gesture_action(
                         prediction,
-                        self
+                        self,
                     )
 
+
+        # ==================================================
+        # NO HAND
+        # ==================================================
 
         else:
 
@@ -909,9 +1242,9 @@ class GestureXProcessor(
             confidence = 0.0
 
 
-        # =================================================
-        # STORE RESULT
-        # =================================================
+        # ==================================================
+        # SAVE RESULTS
+        # ==================================================
 
         with self.lock:
 
@@ -924,9 +1257,9 @@ class GestureXProcessor(
             )
 
 
-        # =================================================
-        # DISPLAY TOP LABEL
-        # =================================================
+        # ==================================================
+        # TOP INFORMATION PANEL
+        # ==================================================
 
         cv2.rectangle(
 
@@ -934,27 +1267,27 @@ class GestureXProcessor(
 
             (
                 0,
-                0
+                0,
             ),
 
             (
                 image.shape[1],
-                115
+                120,
             ),
 
             (
                 20,
                 20,
-                20
+                20,
             ),
 
-            -1
+            -1,
         )
 
 
-        # -----------------------------------------------
-        # Mode
-        # -----------------------------------------------
+        # ==================================================
+        # MODE
+        # ==================================================
 
         cv2.putText(
 
@@ -964,55 +1297,55 @@ class GestureXProcessor(
 
             (
                 20,
-                30
+                30,
             ),
 
             cv2.FONT_HERSHEY_SIMPLEX,
 
-            0.7,
+            0.65,
 
             (
                 255,
                 255,
-                255
+                255,
             ),
 
-            2
+            2,
         )
 
 
-        # -----------------------------------------------
-        # Prediction
-        # -----------------------------------------------
+        # ==================================================
+        # PREDICTION
+        # ==================================================
 
         cv2.putText(
 
             image,
 
-            f"Sign: {prediction}",
+            f"Prediction: {prediction}",
 
             (
                 20,
-                65
+                68,
             ),
 
             cv2.FONT_HERSHEY_SIMPLEX,
 
-            0.9,
+            0.85,
 
             (
                 0,
                 255,
-                0
+                0,
             ),
 
-            2
+            2,
         )
 
 
-        # -----------------------------------------------
-        # Confidence
-        # -----------------------------------------------
+        # ==================================================
+        # CONFIDENCE
+        # ==================================================
 
         cv2.putText(
 
@@ -1022,28 +1355,31 @@ class GestureXProcessor(
 
             (
                 20,
-                100
+                103,
             ),
 
             cv2.FONT_HERSHEY_SIMPLEX,
 
-            0.65,
+            0.60,
 
             (
                 0,
                 255,
-                255
+                255,
             ),
 
-            2
+            2,
         )
 
 
-        # =================================================
-        # GESTURE ACTION
-        # =================================================
+        # ==================================================
+        # GESTURE ACTION PANEL
+        # ==================================================
 
-        if self.mode == "Gesture Control":
+        if self.mode == (
+            "Gesture Control"
+        ):
+
 
             cv2.rectangle(
 
@@ -1051,21 +1387,21 @@ class GestureXProcessor(
 
                 (
                     15,
-                    125
+                    130,
                 ),
 
                 (
                     image.shape[1] - 15,
-                    185
+                    190,
                 ),
 
                 (
                     30,
                     30,
-                    30
+                    30,
                 ),
 
-                -1
+                -1,
             )
 
 
@@ -1073,24 +1409,24 @@ class GestureXProcessor(
 
                 image,
 
-                "Gesture Action:",
+                "Windows Action:",
 
                 (
                     25,
-                    150
+                    155,
                 ),
 
                 cv2.FONT_HERSHEY_SIMPLEX,
 
-                0.6,
+                0.55,
 
                 (
                     255,
                     255,
-                    255
+                    255,
                 ),
 
-                2
+                2,
             )
 
 
@@ -1102,33 +1438,37 @@ class GestureXProcessor(
 
                 (
                     25,
-                    178
+                    182,
                 ),
 
                 cv2.FONT_HERSHEY_SIMPLEX,
 
-                0.7,
+                0.70,
 
                 (
                     0,
                     255,
-                    0
+                    0,
                 ),
 
-                2
+                2,
             )
 
+
+        # ==================================================
+        # RETURN FRAME
+        # ==================================================
 
         return av.VideoFrame.from_ndarray(
 
             image,
 
-            format="bgr24"
+            format="bgr24",
         )
 
 
 # ==========================================================
-# 15. RTC CONFIGURATION
+# 18. RTC CONFIGURATION
 # ==========================================================
 
 RTC_CONFIGURATION = RTCConfiguration(
@@ -1145,20 +1485,22 @@ RTC_CONFIGURATION = RTCConfiguration(
 
 
 # ==========================================================
-# 16. MAIN UI
+# 19. MAIN CAMERA UI
 # ==========================================================
 
 if not camera_enabled:
 
     st.info(
-        "📷 Camera is OFF. Turn on Camera from the sidebar."
+        "📷 Camera is OFF. "
+        "Turn on Camera from the sidebar."
     )
 
 else:
 
-    # ------------------------------------------------------
-    # Mode heading
-    # ------------------------------------------------------
+
+    # ======================================================
+    # SIGN LANGUAGE UI
+    # ======================================================
 
     if mode == "Sign Language":
 
@@ -1170,6 +1512,11 @@ else:
             "Show a trained sign to the camera."
         )
 
+
+    # ======================================================
+    # GESTURE CONTROL UI
+    # ======================================================
+
     else:
 
         st.subheader(
@@ -1177,37 +1524,40 @@ else:
         )
 
         st.write(
-            "Use trained hand gestures to control Windows."
+            "Use trained hand gestures "
+            "to control Windows."
         )
 
 
-    # ------------------------------------------------------
-    # Camera
-    # ------------------------------------------------------
+    # ======================================================
+    # WEBRTC CAMERA
+    # ======================================================
 
-    ctx = webrtc_streamer(
+    webrtc_streamer(
 
-        key="gesturex-camera",
+        key=f"gesturex-camera-{mode}",
 
         mode=WebRtcMode.SENDRECV,
 
-        rtc_configuration=RTC_CONFIGURATION,
+        rtc_configuration=(
+            RTC_CONFIGURATION
+        ),
 
         media_stream_constraints={
             "video": True,
-            "audio": False
+            "audio": False,
         },
 
         video_processor_factory=(
             GestureXProcessor
         ),
 
-        async_processing=True
+        async_processing=True,
     )
 
 
 # ==========================================================
-# 17. GESTURE CONTROL TABLE
+# 20. GESTURE CONTROL INFORMATION
 # ==========================================================
 
 if mode == "Gesture Control":
@@ -1226,15 +1576,15 @@ if mode == "Gesture Control":
 
         st.markdown(
             """
-            **Palm** → General gesture
+            **✋ Palm** → Palm Detected
 
-            **Fist** → Play / Pause
+            **✊ Fist** → Play / Pause
 
-            **Thumbs Up** → Volume Up
+            **👍 Thumbs Up** → Volume Up
 
-            **Thumbs Down** → Volume Down
+            **👎 Thumbs Down** → Volume Down
 
-            **Index Right** → Move Right
+            **☝️ Index Right** → Right Arrow
             """
         )
 
@@ -1243,13 +1593,13 @@ if mode == "Gesture Control":
 
         st.markdown(
             """
-            **Index Left** → Move Left
+            **☝️ Index Left** → Left Arrow
 
-            **Volume Up** → Volume Up
+            **⬆️ Up** → Up Arrow
 
-            **Volume Down** → Volume Down
+            **⬇️ Down** → Down Arrow
 
-            **OK** → Enter / OK
+            **👌 OK** → Enter
 
             **No Gesture** → No Action
             """
@@ -1257,7 +1607,7 @@ if mode == "Gesture Control":
 
 
 # ==========================================================
-# 18. SIGN LANGUAGE INFORMATION
+# 21. SIGN LANGUAGE INFORMATION
 # ==========================================================
 
 else:
@@ -1268,15 +1618,15 @@ else:
         "🤟 Sign Language"
     )
 
-    st.info(
-        "The Sign Language Random Forest model "
-        "is loaded independently from the Gesture "
-        "Control model."
+    st.success(
+        "Sign Language Random Forest model "
+        "is running with its original "
+        "wrist and hand-size normalization."
     )
 
 
 # ==========================================================
-# 19. MODEL PATH INFORMATION
+# 22. LOADED MODEL PATHS
 # ==========================================================
 
 with st.expander(
@@ -1295,6 +1645,12 @@ with st.expander(
         GESTURE_ENCODER_FILE
     )
 
+    if gesture_scaler is not None:
+
+        st.code(
+            GESTURE_SCALER_FILE
+        )
+
 
     st.write(
         "### Sign Language"
@@ -1308,9 +1664,15 @@ with st.expander(
         SIGN_ENCODER_FILE
     )
 
+    st.info(
+        "Sign Language does not use "
+        "scaler.pkl. It uses the original "
+        "wrist + hand-size normalization."
+    )
+
 
 # ==========================================================
-# 20. FOOTER
+# 23. FOOTER
 # ==========================================================
 
 st.markdown("---")
@@ -1321,5 +1683,5 @@ st.markdown(
     GestureX — AI Sign Language & Gesture Control System
     </div>
     """,
-    unsafe_allow_html=True
+    unsafe_allow_html=True,
 )
