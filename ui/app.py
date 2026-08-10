@@ -1576,7 +1576,7 @@ if mode == "Gesture Control":
 
         st.markdown(
             """
-            **✋ Palm** → Palm Detected
+            **✋ Palm** → Hello
 
             **✊ Fist** → Play / Pause
 
