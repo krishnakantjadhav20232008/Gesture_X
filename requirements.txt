@@ -1,0 +1,10 @@
+GestureX - AI Sign Language & Gesture Control System
+
+numpy 
+opencv-python 
+mediapipe 
+scikit-learn 
+joblib 
+streamlit
+streamlit-webrtc 
+av
