@@ -15,18 +15,30 @@ from sklearn.metrics import (
 
 
 # ==========================================================
-# 1. PATHS
+# 1. SETUP DYNAMIC PATHS & DIRECTORIES
 # ==========================================================
 
-PREPROCESSED_PATH = (
-    r"D:\AI_Sign_Gesture_System\outputs\preprocessed"
-)
+# Dynamically locate project root directory
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
-MODEL_PATH = (
-    r"D:\AI_Sign_Gesture_System\outputs\models"
-)
+# Navigate to project root if running inside 'models' or a subfolder
+if os.path.basename(SCRIPT_DIR) in ["models", "src", "scripts"]:
+    BASE_DIR = os.path.dirname(SCRIPT_DIR)
+else:
+    BASE_DIR = SCRIPT_DIR
 
-os.makedirs(MODEL_PATH, exist_ok=True)
+OUTPUTS_DIR = os.path.join(BASE_DIR, "outputs")
+
+# FOLDER PATHS (Directories only)
+PREPROCESSED_DIR = os.path.join(OUTPUTS_DIR, "preprocessed_gesture")
+MODEL_DIR = os.path.join(OUTPUTS_DIR, "model_gesture")
+
+# Create output folder safely if it doesn't exist
+os.makedirs(MODEL_DIR, exist_ok=True)
+
+print(f"Project Base Directory : {BASE_DIR}")
+print(f"Loading data from      : {PREPROCESSED_DIR}")
+print(f"Saving models to       : {MODEL_DIR}")
 
 
 # ==========================================================
@@ -37,52 +49,22 @@ print("\n===================================")
 print("LOADING PREPROCESSED DATA")
 print("===================================")
 
-X_train = joblib.load(
-    os.path.join(
-        PREPROCESSED_PATH,
-        "X_train.pkl"
-    )
-)
+try:
+    X_train = joblib.load(os.path.join(PREPROCESSED_DIR, "X_train.pkl"))
+    X_test = joblib.load(os.path.join(PREPROCESSED_DIR, "X_test.pkl"))
+    y_train = joblib.load(os.path.join(PREPROCESSED_DIR, "y_train.pkl"))
+    y_test = joblib.load(os.path.join(PREPROCESSED_DIR, "y_test.pkl"))
+    X_train_scaled = joblib.load(os.path.join(PREPROCESSED_DIR, "X_train_scaled.pkl"))
+    X_test_scaled = joblib.load(os.path.join(PREPROCESSED_DIR, "X_test_scaled.pkl"))
 
-X_test = joblib.load(
-    os.path.join(
-        PREPROCESSED_PATH,
-        "X_test.pkl"
-    )
-)
+    print("Training Samples :", X_train.shape[0])
+    print("Testing Samples  :", X_test.shape[0])
+    print("Features         :", X_train.shape[1])
 
-y_train = joblib.load(
-    os.path.join(
-        PREPROCESSED_PATH,
-        "y_train.pkl"
-    )
-)
-
-y_test = joblib.load(
-    os.path.join(
-        PREPROCESSED_PATH,
-        "y_test.pkl"
-    )
-)
-
-X_train_scaled = joblib.load(
-    os.path.join(
-        PREPROCESSED_PATH,
-        "X_train_scaled.pkl"
-    )
-)
-
-X_test_scaled = joblib.load(
-    os.path.join(
-        PREPROCESSED_PATH,
-        "X_test_scaled.pkl"
-    )
-)
-
-
-print("Training Samples :", X_train.shape[0])
-print("Testing Samples  :", X_test.shape[0])
-print("Features         :", X_train.shape[1])
+except FileNotFoundError as e:
+    print(f"\n[ERROR] Missing preprocessed data file: {e}")
+    print(f"Please ensure preprocessed files exist in: {PREPROCESSED_DIR}")
+    exit(1)
 
 
 # ==========================================================
@@ -93,9 +75,7 @@ print("\n===================================")
 print("CREATING CLASSIFICATION MODELS")
 print("===================================")
 
-
 models = {
-
     "Decision Tree": DecisionTreeClassifier(
         random_state=42
     ),
@@ -121,9 +101,7 @@ models = {
     )
 }
 
-
 print("\nModels Created:")
-
 for model_name in models:
     print("-", model_name)
 
@@ -134,152 +112,67 @@ for model_name in models:
 
 results = {}
 
-
 for model_name, model in models.items():
 
     print("\n===================================")
     print("TRAINING:", model_name)
     print("===================================")
 
-
-    # ------------------------------------------------------
-    # DECISION TREE / RANDOM FOREST
-    # ------------------------------------------------------
-
-    if model_name in [
-        "Decision Tree",
-        "Random Forest"
-    ]:
-
+    # Decision Tree / Random Forest
+    if model_name in ["Decision Tree", "Random Forest"]:
         print("Using original features...")
+        model.fit(X_train, y_train)
+        y_pred = model.predict(X_test)
 
-        model.fit(
-            X_train,
-            y_train
-        )
-
-        y_pred = model.predict(
-            X_test
-        )
-
-
-    # ------------------------------------------------------
-    # KNN / SVM / LOGISTIC REGRESSION
-    # ------------------------------------------------------
-
+    # KNN / SVM / Logistic Regression
     else:
-
         print("Using scaled features...")
+        model.fit(X_train_scaled, y_train)
+        y_pred = model.predict(X_test_scaled)
 
-        model.fit(
-            X_train_scaled,
-            y_train
-        )
-
-        y_pred = model.predict(
-            X_test_scaled
-        )
-
-
-    # ======================================================
-    # ACCURACY
-    # ======================================================
-
-    accuracy = accuracy_score(
-        y_test,
-        y_pred
-    )
-
-
-    # ======================================================
-    # F1 SCORE
-    # ======================================================
-
+    # Compute Metrics
+    accuracy = accuracy_score(y_test, y_pred)
     f1 = f1_score(
-        y_test,
-        y_pred,
-        average="weighted",
+        y_test, 
+        y_pred, 
+        average="weighted", 
         zero_division=0
     )
+    confusion = confusion_matrix(y_test, y_pred)
 
-
-    # ======================================================
-    # CONFUSION MATRIX
-    # ======================================================
-
-    confusion = confusion_matrix(
-        y_test,
-        y_pred
-    )
-
-
-    # ======================================================
-    # STORE RESULTS
-    # ======================================================
-
+    # Store Results
     results[model_name] = {
         "accuracy": accuracy,
         "f1_score": f1,
         "confusion_matrix": confusion
     }
 
-
-    # ======================================================
-    # DISPLAY RESULTS
-    # ======================================================
-
+    # Display Metrics
     print("\nAccuracy :", f"{accuracy:.4f}")
     print("F1 Score :", f"{f1:.4f}")
-
     print("\nConfusion Matrix:")
     print(confusion)
 
+    # Save Individual Model
+    model_filename = model_name.lower().replace(" ", "_") + ".pkl"
+    model_file = os.path.join(MODEL_DIR, model_filename)
 
-    # ======================================================
-    # SAVE INDIVIDUAL MODEL
-    # ======================================================
-
-    model_filename = (
-        model_name
-        .lower()
-        .replace(" ", "_")
-        + ".pkl"
-    )
-
-    model_file = os.path.join(
-        MODEL_PATH,
-        model_filename
-    )
-
-    joblib.dump(
-        model,
-        model_file
-    )
-
-    print("\nModel Saved:")
-    print(model_file)
+    joblib.dump(model, model_file)
+    print("\nModel Saved:", model_file)
 
 
 # ==========================================================
 # 5. MODEL COMPARISON
 # ==========================================================
 
-print("\n")
-print("===================================")
+print("\n===================================")
 print("MODEL COMPARISON")
 print("===================================")
 
-print(
-    f"{'Model':25}"
-    f"{'Accuracy':15}"
-    f"{'F1 Score':15}"
-)
-
+print(f"{'Model':25}{'Accuracy':15}{'F1 Score':15}")
 print("-" * 55)
 
-
 for model_name, result in results.items():
-
     print(
         f"{model_name:25}"
         f"{result['accuracy']:<15.4f}"
@@ -293,102 +186,50 @@ for model_name, result in results.items():
 
 best_model_name = max(
     results,
-    key=lambda name:
-    results[name]["f1_score"]
+    key=lambda name: results[name]["f1_score"]
 )
 
-
-best_model = models[
-    best_model_name
-]
-
-
-best_accuracy = results[
-    best_model_name
-]["accuracy"]
-
-
-best_f1 = results[
-    best_model_name
-]["f1_score"]
+best_model = models[best_model_name]
+best_accuracy = results[best_model_name]["accuracy"]
+best_f1 = results[best_model_name]["f1_score"]
 
 
 # ==========================================================
-# 7. DISPLAY BEST MODEL
+# 7. DISPLAY & SAVE BEST MODEL
 # ==========================================================
 
 print("\n===================================")
 print("BEST MODEL")
 print("===================================")
 
-print(
-    "Model    :",
-    best_model_name
-)
+print("Model    :", best_model_name)
+print("Accuracy :", f"{best_accuracy:.4f}")
+print("F1 Score :", f"{best_f1:.4f}")
 
-print(
-    "Accuracy :",
-    f"{best_accuracy:.4f}"
-)
+# Save Best Model File
+best_model_file = os.path.join(MODEL_DIR, "gesturex_best_model.pkl")
+joblib.dump(best_model, best_model_file)
+print("\nBest Model Saved:", best_model_file)
 
-print(
-    "F1 Score :",
-    f"{best_f1:.4f}"
-)
-
-
-# ==========================================================
-# 8. SAVE BEST MODEL
-# ==========================================================
-
-best_model_file = os.path.join(
-    MODEL_PATH,
-    "gesturex_best_model.pkl"
-)
-
-joblib.dump(
-    best_model,
-    best_model_file
-)
-
-
-print("\nBest Model Saved:")
-print(best_model_file)
+# Save Model Results File
+results_file = os.path.join(MODEL_DIR, "model_results.pkl")
+joblib.dump(results, results_file)
+print("Model Results Saved:", results_file)
 
 
 # ==========================================================
-# 9. SAVE MODEL RESULTS
-# ==========================================================
-
-results_file = os.path.join(
-    MODEL_PATH,
-    "model_results.pkl"
-)
-
-joblib.dump(
-    results,
-    results_file
-)
-
-
-print("\nModel Results Saved:")
-print(results_file)
-
-
-# ==========================================================
-# 10. FINAL MESSAGE
+# 8. FINAL SUMMARY
 # ==========================================================
 
 print("\n===================================")
 print("MODEL TRAINING COMPLETED")
 print("===================================")
 
-print("\nAll Models:")
-
+print("\nAll Models Trained & Saved:")
 for model_name in models:
     print("✓", model_name)
 
-print("\nBest Model:")
+print("\nTop Performing Model:")
 print("✓", best_model_name)
 
 print("\nReady for Real-Time Prediction! 🚀")
