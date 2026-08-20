@@ -559,7 +559,7 @@ st.markdown("---")
 st.markdown(
     """
     <div style="text-align:center;color:#888;">
-    GestureX — AI Sign Language & Gesture Control System
+   ❤️ GestureX — AI Sign Language & Gesture Control System
     </div>
     """,
     unsafe_allow_html=True,
